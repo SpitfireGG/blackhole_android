@@ -53,10 +53,22 @@ class BlackholeApp : Application() {
                 description = "Tells you when a video is saved, or why one failed"
             }
         )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_OVERLAY,
+                "Floating overlay",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Persistent notification for the floating download bubble"
+                setShowBadge(false)
+            }
+        )
     }
 
     companion object {
         const val CHANNEL_PROGRESS = "downloads_progress"
         const val CHANNEL_DONE = "downloads_done"
+        const val CHANNEL_OVERLAY = "floating_overlay"
     }
 }

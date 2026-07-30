@@ -47,6 +47,11 @@ object Prefs {
         get() = sp.getString(KEY_LAST_URL, null)
         set(value) = sp.edit().putString(KEY_LAST_URL, value).apply()
 
+    /** Floating overlay bubble for one-tap downloads from any app. */
+    var overlayEnabled: Boolean
+        get() = sp.getBoolean(KEY_OVERLAY, false)
+        set(value) = sp.edit().putBoolean(KEY_OVERLAY, value).apply()
+
     private const val KEY_AUTO_UPDATE = "auto_update"
     private const val KEY_NIGHTLY = "nightly_channel"
     private const val KEY_SHORT_NAMES = "short_filenames"
@@ -54,4 +59,5 @@ object Prefs {
     private const val KEY_AUTO_START = "auto_start_on_open"
     private const val KEY_ARIA2C = "use_aria2c"
     private const val KEY_LAST_URL = "last_handled_url"
+    private const val KEY_OVERLAY = "floating_overlay"
 }

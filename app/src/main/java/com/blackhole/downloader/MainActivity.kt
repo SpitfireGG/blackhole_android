@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,6 +30,7 @@ import com.blackhole.downloader.core.Prefs
 import com.blackhole.downloader.core.UrlUtils
 import com.blackhole.downloader.ui.AboutDialog
 import com.blackhole.downloader.ui.HomeScreen
+import com.blackhole.downloader.service.FloatingOverlayService
 import com.blackhole.downloader.ui.MainViewModel
 import com.blackhole.downloader.ui.Screen
 import com.blackhole.downloader.ui.SettingsScreen
@@ -97,7 +99,20 @@ class MainActivity : ComponentActivity() {
                                 ytdlpVersion = version,
                                 updating = updating,
                                 onBack = { viewModel.go(Screen.VIDEOS) },
-                                onUpdateYtdlp = { viewModel.updateYtdlp() }
+                                onUpdateYtdlp = { viewModel.updateYtdlp() },
+                                overlayEnabled = Prefs.overlayEnabled,
+                                onOverlayToggle = { enabled ->
+                                    Prefs.overlayEnabled = enabled
+                                    if (enabled) {
+                                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                                            Settings.canDrawOverlays(this@MainActivity)
+                                        ) {
+                                            FloatingOverlayService.start(this@MainActivity)
+                                        }
+                                    } else {
+                                        FloatingOverlayService.stop(this@MainActivity)
+                                    }
+                                }
                             )
                         }
 
@@ -125,6 +140,13 @@ class MainActivity : ComponentActivity() {
         val url = viewModel.peekClipboard()
         if (url != null && Prefs.autoStartOnOpen && url != Prefs.lastHandledUrl) {
             viewModel.start(url)
+        }
+
+        // Start overlay if enabled and permission granted (e.g. returning from settings)
+        if (Prefs.overlayEnabled) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
+                FloatingOverlayService.start(this)
+            }
         }
     }
 

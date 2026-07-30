@@ -1,5 +1,9 @@
 package com.blackhole.downloader.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,7 +49,9 @@ fun SettingsScreen(
     ytdlpVersion: String,
     updating: Boolean,
     onBack: () -> Unit,
-    onUpdateYtdlp: () -> Unit
+    onUpdateYtdlp: () -> Unit,
+    overlayEnabled: Boolean,
+    onOverlayToggle: (Boolean) -> Unit
 ) {
     var autoUpdate by remember { mutableStateOf(Prefs.autoUpdate) }
     var nightly by remember { mutableStateOf(Prefs.nightlyChannel) }
@@ -52,6 +59,8 @@ fun SettingsScreen(
     var autoStart by remember { mutableStateOf(Prefs.autoStartOnOpen) }
     var aria2c by remember { mutableStateOf(Prefs.useAria2c) }
     var maxHeight by remember { mutableIntStateOf(Prefs.maxHeight) }
+    var overlayChecked by remember { mutableStateOf(overlayEnabled) }
+    val context = LocalContext.current
 
     Column(
         Modifier
@@ -108,6 +117,42 @@ fun SettingsScreen(
                 subtitle = "Faster on unstable connections, occasionally struggles with livestreams",
                 checked = aria2c
             ) { aria2c = it; Prefs.useAria2c = it }
+
+            ToggleRow(
+                title = "Floating bubble",
+                subtitle = "Show a draggable download button over other apps",
+                checked = overlayChecked
+            ) { enabled ->
+                overlayChecked = enabled
+                onOverlayToggle(enabled)
+            }
+
+            if (overlayChecked) {
+                val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Settings.canDrawOverlays(context)
+                } else true
+                if (!canDraw) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                                context.startActivity(intent)
+                            }
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Grant overlay permission",
+                            color = Ink.Amber,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
 
             SectionHeader("Engine")
 
