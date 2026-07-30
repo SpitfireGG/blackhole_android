@@ -130,20 +130,21 @@ class MainActivity : ComponentActivity() {
 
     /** Handles "share to Blackhole" and "open link with Blackhole". */
     private fun handleIntent(intent: Intent?) {
-        val candidate = when (intent?.action) {
-            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
-            Intent.ACTION_VIEW -> intent.dataString
+        val i = intent ?: return
+        val candidate = when (i.action) {
+            Intent.ACTION_SEND -> i.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> i.dataString
             else -> null
         } ?: return
 
         val url = UrlUtils.extractUrl(candidate) ?: return
-        if (url == Prefs.lastHandledUrl && intent.action == Intent.ACTION_VIEW) return
+        if (url == Prefs.lastHandledUrl && i.action == Intent.ACTION_VIEW) return
 
         viewModel.go(Screen.HOME)
         viewModel.start(url)
 
         // Stop the same link firing again on rotation or when returning to the app.
-        intent.action = Intent.ACTION_MAIN
+        i.action = Intent.ACTION_MAIN
     }
 
     private fun requestNotificationsIfNeeded() {
