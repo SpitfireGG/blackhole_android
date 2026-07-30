@@ -52,6 +52,24 @@ object Prefs {
         get() = sp.getBoolean(KEY_OVERLAY, false)
         set(value) = sp.edit().putBoolean(KEY_OVERLAY, value).apply()
 
+    /** Track downloaded URLs so the overlay rejects duplicates. */
+    fun addDownloadedUrl(url: String) {
+        val set = sp.getStringSet(KEY_DOWNLOADED_URLS, mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+        set.add(normalise(url))
+        sp.edit().putStringSet(KEY_DOWNLOADED_URLS, set).apply()
+    }
+
+    fun isAlreadyDownloaded(url: String): Boolean {
+        val set = sp.getStringSet(KEY_DOWNLOADED_URLS, emptySet()) ?: emptySet()
+        return normalise(url) in set
+    }
+
+    /** Strip tracking garbage but keep the scheme+host+path for dedup. */
+    private fun normalise(url: String): String {
+        val clean = UrlUtils.extractUrl(url) ?: url
+        return clean.substringBefore("?").substringBefore("#")
+    }
+
     private const val KEY_AUTO_UPDATE = "auto_update"
     private const val KEY_NIGHTLY = "nightly_channel"
     private const val KEY_SHORT_NAMES = "short_filenames"
@@ -60,4 +78,5 @@ object Prefs {
     private const val KEY_ARIA2C = "use_aria2c"
     private const val KEY_LAST_URL = "last_handled_url"
     private const val KEY_OVERLAY = "floating_overlay"
+    private const val KEY_DOWNLOADED_URLS = "downloaded_urls"
 }

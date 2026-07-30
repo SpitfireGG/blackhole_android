@@ -18,6 +18,7 @@ import com.blackhole.downloader.core.DownloadBus
 import com.blackhole.downloader.core.DownloadEvent
 import com.blackhole.downloader.core.DownloadState
 import com.blackhole.downloader.core.Downloader
+import com.blackhole.downloader.core.Prefs
 import com.blackhole.downloader.core.UrlUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -114,6 +115,7 @@ class DownloadService : Service() {
 
             result.fold(
                 onSuccess = {
+                    Prefs.addDownloadedUrl(url)
                     DownloadBus.emit(DownloadEvent.Finished(it.displayName, it.uri))
                     DownloadBus.invalidateLibrary()
                     notifyDone(it.displayName, UrlUtils.formatBytes(it.sizeBytes))

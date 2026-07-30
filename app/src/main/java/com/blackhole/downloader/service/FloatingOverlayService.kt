@@ -1,5 +1,6 @@
 package com.blackhole.downloader.service
 
+import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -16,18 +17,27 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.blackhole.downloader.BlackholeApp
 import com.blackhole.downloader.MainActivity
 import com.blackhole.downloader.R
+import com.blackhole.downloader.core.DownloadBus
+import com.blackhole.downloader.core.DownloadState
 import com.blackhole.downloader.core.Prefs
 import com.blackhole.downloader.core.UrlUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class FloatingOverlayService : Service() {
 
     private lateinit var wm: WindowManager
     private lateinit var overlayView: FrameLayout
     private var params: WindowManager.LayoutParams? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var initialX = 0
     private var initialY = 0
@@ -53,10 +63,12 @@ class FloatingOverlayService : Service() {
 
         startForegroundSafely(buildNotification())
         showOverlay()
+        observeQueue()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        scope.cancel()
         hideOverlay()
         super.onDestroy()
     }
@@ -97,6 +109,25 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    private fun observeQueue() {
+        scope.launch {
+            DownloadBus.state.collect { state ->
+                val badge = overlayView.findViewById<TextView>(R.id.overlay_badge) ?: return@collect
+                val count = when (state) {
+                    is DownloadState.Idle -> 0
+                    is DownloadState.Working -> state.queued + 1
+                }
+                if (count > 0) {
+                    badge.text = count.toString()
+                    badge.visibility = View.VISIBLE
+                } else {
+                    badge.text = ""
+                    badge.visibility = View.GONE
+                }
+            }
+        }
+    }
+
     private fun currentClipboardUrl(): String? {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
         val clip = clipboard.primaryClip ?: return null
@@ -107,20 +138,49 @@ class FloatingOverlayService : Service() {
         return null
     }
 
+    private fun performTap() {
+        val url = currentClipboardUrl()
+        if (url == null) {
+            pulseAnimation()
+            showFlash("No link on clipboard")
+            return
+        }
+        if (Prefs.isAlreadyDownloaded(url)) {
+            pulseAnimation()
+            showFlash("Already saved")
+            return
+        }
+        Prefs.lastHandledUrl = url
+        DownloadService.enqueue(this, url)
+        pulseAnimation()
+        showFlash("Download queued")
+    }
+
+    private fun pulseAnimation() {
+        val bubble = overlayView.findViewById<ImageView>(R.id.overlay_icon)
+        val pulse = ValueAnimator.ofFloat(1f, 1.35f, 1f).apply {
+            duration = 350
+            addUpdateListener { anim ->
+                val v = anim.animatedValue as Float
+                bubble.scaleX = v
+                bubble.scaleY = v
+            }
+        }
+        pulse.start()
+    }
+
     private fun showFlash(text: String) {
-        val flash = overlayView.findViewById<View>(R.id.overlay_flash) ?: return
+        val flash = overlayView.findViewById<TextView>(R.id.overlay_flash) ?: return
         flash.post {
+            flash.text = text
             flash.alpha = 1f
-            flash.animate().alpha(0f).duration = 1500
+            flash.animate().alpha(0f).setDuration(1800).start()
         }
     }
 
     private fun startForegroundSafely(notification: Notification) {
         runCatching {
-            startForeground(
-                NOTIFICATION_ID,
-                notification
-            )
+            startForeground(NOTIFICATION_ID, notification)
         }
     }
 
@@ -199,17 +259,6 @@ class FloatingOverlayService : Service() {
                 }
             }
             return false
-        }
-    }
-
-    private fun performTap() {
-        val url = currentClipboardUrl()
-        if (url != null) {
-            Prefs.lastHandledUrl = url
-            DownloadService.enqueue(this, url)
-            showFlash("Downloading")
-        } else {
-            showFlash("No link on clipboard")
         }
     }
 

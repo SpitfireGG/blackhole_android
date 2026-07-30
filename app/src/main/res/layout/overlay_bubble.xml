@@ -13,6 +13,19 @@
         android:contentDescription="Download from clipboard" />
 
     <TextView
+        android:id="@+id/overlay_badge"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_gravity="top|end"
+        android:gravity="center"
+        android:background="@drawable/overlay_badge"
+        android:textSize="10sp"
+        android:textColor="#FFFFFF"
+        android:text=""
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
+
+    <TextView
         android:id="@+id/overlay_flash"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

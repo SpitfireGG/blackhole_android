@@ -114,6 +114,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun start(url: String) {
+        if (Prefs.isAlreadyDownloaded(url)) {
+            _toasts.tryEmit("Already saved")
+            return
+        }
         Prefs.lastHandledUrl = url
         _clipboardHint.value = url to UrlUtils.platformOf(url)
         DownloadService.enqueue(getApplication(), url)
