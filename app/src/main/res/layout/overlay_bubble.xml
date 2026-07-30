@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="64dp"
-    android:layout_height="64dp">
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:padding="4dp">
 
     <ImageView
         android:id="@+id/overlay_icon"
         android:layout_width="56dp"
         android:layout_height="56dp"
-        android:layout_gravity="center"
         android:background="@drawable/overlay_circle"
-        android:src="@drawable/ic_stat_blackhole"
-        android:clickable="true"
-        android:focusable="true"
+        android:src="@mipmap/blackhole_icon"
         android:contentDescription="Download from clipboard" />
 
     <TextView
@@ -22,8 +20,6 @@
         android:textSize="11sp"
         android:textColor="#FFEFA860"
         android:alpha="0"
-        android:clickable="false"
-        android:focusable="false"
         android:text=""
         android:padding="2dp" />
 

@@ -64,19 +64,9 @@ class FloatingOverlayService : Service() {
     private fun showOverlay() {
         val inflater = getSystemService(LAYOUT_INFLATER_SERVICE) as LayoutInflater
         overlayView = inflater.inflate(R.layout.overlay_bubble, null) as FrameLayout
-        overlayView.setOnTouchListener(OverlayTouchListener())
 
         val bubble = overlayView.findViewById<ImageView>(R.id.overlay_icon)
-        bubble.setOnClickListener {
-            val url = currentClipboardUrl()
-            if (url != null) {
-                Prefs.lastHandledUrl = url
-                DownloadService.enqueue(this, url)
-                showFlash("Downloading")
-            } else {
-                showFlash("No link on clipboard")
-            }
-        }
+        bubble.setOnTouchListener(OverlayTouchListener())
 
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -86,10 +76,11 @@ class FloatingOverlayService : Service() {
         }
 
         params = WindowManager.LayoutParams(
-            dp(64),
-            dp(64),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             flags,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -168,6 +159,8 @@ class FloatingOverlayService : Service() {
 
     private inner class OverlayTouchListener : View.OnTouchListener {
         private var dragging = false
+        private var downX = 0f
+        private var downY = 0f
 
         override fun onTouch(v: View, event: MotionEvent): Boolean {
             val p = params ?: return false
@@ -177,29 +170,46 @@ class FloatingOverlayService : Service() {
                     initialY = p.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
+                    downX = event.x
+                    downY = event.y
                     dragging = false
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
-                    if (dx * dx + dy * dy > 20) {
+                    if (dx * dx + dy * dy > 100) {
                         dragging = true
-                        p.x = initialX + dx
-                        p.y = initialY + dy
+                        p.x = (event.rawX - downX).toInt()
+                        p.y = (event.rawY - downY).toInt()
                         wm.updateViewLayout(overlayView, p)
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
                     if (!dragging) {
-                        overlayView.findViewById<ImageView>(R.id.overlay_icon)?.performClick()
+                        performTap()
                     }
                     dragging = false
                     return true
                 }
+                MotionEvent.ACTION_OUTSIDE -> {
+                    dragging = false
+                    return false
+                }
             }
             return false
+        }
+    }
+
+    private fun performTap() {
+        val url = currentClipboardUrl()
+        if (url != null) {
+            Prefs.lastHandledUrl = url
+            DownloadService.enqueue(this, url)
+            showFlash("Downloading")
+        } else {
+            showFlash("No link on clipboard")
         }
     }
 
