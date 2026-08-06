@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Blackhole</string>
+    <string name="vampire_label">Blackhole vampire</string>
+    <string name="vampire_accessibility_description">Automatically downloads any video link you copy, from any app. Blackhole only reads the clipboard, never screen content.</string>
 </resources>

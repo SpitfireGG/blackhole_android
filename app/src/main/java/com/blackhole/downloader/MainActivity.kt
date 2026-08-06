@@ -30,6 +30,7 @@ import com.blackhole.downloader.core.Prefs
 import com.blackhole.downloader.core.UrlUtils
 import com.blackhole.downloader.ui.AboutDialog
 import com.blackhole.downloader.ui.HomeScreen
+import com.blackhole.downloader.service.ClipboardVampireService
 import com.blackhole.downloader.service.FloatingOverlayService
 import com.blackhole.downloader.ui.MainViewModel
 import com.blackhole.downloader.ui.Screen
@@ -42,6 +43,12 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    // Recomputed on every resume so the settings hint rows react to the user
+    // granting mic permission or enabling Blackhole under Accessibility.
+    // Set for real in onCreate once the activity is attached.
+    private var vampireActive by mutableStateOf(false)
+    private var micGranted by mutableStateOf(false)
+
     /**
      * Notifications aren't required to download, but without them a background
      * download is invisible, so we ask once and carry on either way.
@@ -49,10 +56,15 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    private val micPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotificationsIfNeeded()
+        vampireActive = ClipboardVampireService.isEnabled(this)
+        micGranted = hasMicPermission()
 
         setContent {
             BlackholeTheme {
@@ -112,7 +124,36 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         FloatingOverlayService.stop(this@MainActivity)
                                     }
-                                }
+                                },
+                                ghostEnabled = Prefs.ghostMode,
+                                onGhostToggle = { enabled ->
+                                    Prefs.ghostMode = enabled
+                                    FloatingOverlayService.refresh(this@MainActivity)
+                                },
+                                whisperEnabled = Prefs.whisperMode,
+                                onWhisperToggle = { enabled ->
+                                    Prefs.whisperMode = enabled
+                                    if (enabled &&
+                                        ContextCompat.checkSelfPermission(
+                                            this, Manifest.permission.RECORD_AUDIO
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                                vampireEnabled = Prefs.vampireMode,
+                                onVampireToggle = { enabled ->
+                                    Prefs.vampireMode = enabled
+                                    if (enabled && !ClipboardVampireService.isEnabled(this)) {
+                                        openAccessibilitySettings()
+                                    }
+                                },
+                                onOpenAccessibilitySettings = { openAccessibilitySettings() },
+                                onRequestMicPermission = {
+                                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                },
+                                micPermissionGranted = micGranted,
+                                vampireServiceEnabled = vampireActive
                             )
                         }
 
@@ -135,10 +176,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        vampireActive = ClipboardVampireService.isEnabled(this)
+        micGranted = hasMicPermission()
         // Clipboard reads only work while an app holds focus, which is exactly the
         // moment we want one. Android 12+ shows a system toast when this happens.
         val url = viewModel.peekClipboard()
-        if (url != null && Prefs.autoStartOnOpen && url != Prefs.lastHandledUrl) {
+        if (url != null && (Prefs.autoStartOnOpen || Prefs.vampireMode) && url != Prefs.lastHandledUrl) {
             viewModel.start(url)
         }
 
@@ -176,6 +219,17 @@ class MainActivity : ComponentActivity() {
         ) == PackageManager.PERMISSION_GRANTED
         if (!granted) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun hasMicPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun openAccessibilitySettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 }

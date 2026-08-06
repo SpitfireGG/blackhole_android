@@ -51,7 +51,17 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onUpdateYtdlp: () -> Unit,
     overlayEnabled: Boolean,
-    onOverlayToggle: (Boolean) -> Unit
+    onOverlayToggle: (Boolean) -> Unit,
+    ghostEnabled: Boolean,
+    onGhostToggle: (Boolean) -> Unit,
+    whisperEnabled: Boolean,
+    onWhisperToggle: (Boolean) -> Unit,
+    vampireEnabled: Boolean,
+    onVampireToggle: (Boolean) -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onRequestMicPermission: () -> Unit,
+    micPermissionGranted: Boolean,
+    vampireServiceEnabled: Boolean
 ) {
     var autoUpdate by remember { mutableStateOf(Prefs.autoUpdate) }
     var nightly by remember { mutableStateOf(Prefs.nightlyChannel) }
@@ -60,6 +70,9 @@ fun SettingsScreen(
     var aria2c by remember { mutableStateOf(Prefs.useAria2c) }
     var maxHeight by remember { mutableIntStateOf(Prefs.maxHeight) }
     var overlayChecked by remember { mutableStateOf(overlayEnabled) }
+    var ghostChecked by remember { mutableStateOf(ghostEnabled) }
+    var whisperChecked by remember { mutableStateOf(whisperEnabled) }
+    var vampireChecked by remember { mutableStateOf(vampireEnabled) }
     val context = LocalContext.current
 
     Column(
@@ -154,6 +167,64 @@ fun SettingsScreen(
                 }
             }
 
+            SectionHeader("Automation")
+
+            ToggleRow(
+                title = "Ghost bubble",
+                subtitle = "The bubble fades to a faint dot. Shake the phone to reveal it, drag it to a corner to download",
+                checked = ghostChecked
+            ) { enabled ->
+                ghostChecked = enabled
+                onGhostToggle(enabled)
+            }
+
+            ToggleRow(
+                title = "Whisper",
+                subtitle = "Hold the bubble and say \u201cdownload\u201d instead of tapping",
+                checked = whisperChecked
+            ) { enabled ->
+                whisperChecked = enabled
+                onWhisperToggle(enabled)
+            }
+
+            if (whisperChecked && !micPermissionGranted) {
+                HintRow(
+                    text = "Grant microphone permission",
+                    onClick = onRequestMicPermission
+                )
+            }
+
+            ToggleRow(
+                title = "Vampire",
+                subtitle = "Automatically download any platform link you copy, from any app",
+                checked = vampireChecked
+            ) { enabled ->
+                vampireChecked = enabled
+                onVampireToggle(enabled)
+            }
+
+            if (vampireChecked) {
+                if (!vampireServiceEnabled) {
+                    HintRow(
+                        text = "Enable Blackhole in Accessibility for global vampire mode",
+                        onClick = onOpenAccessibilitySettings
+                    )
+                } else {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Vampire active — copying a link downloads it",
+                            color = Ink.TextTertiary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
             SectionHeader("Engine")
 
             ToggleRow(
@@ -196,6 +267,19 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun HintRow(text: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text, color = Ink.Amber, fontSize = 14.sp)
     }
 }
 
