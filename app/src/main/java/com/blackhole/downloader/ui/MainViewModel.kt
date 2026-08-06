@@ -151,7 +151,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val clip = clipboard.primaryClip ?: return null
         for (i in 0 until clip.itemCount) {
             val text = clip.getItemAt(i).coerceToText(context)
-            UrlUtils.extractUrl(text)?.let { return it }
+            UrlUtils.extractUrl(text)?.let {
+                Prefs.lastClipboardUrl = it
+                return it
+            }
         }
         return null
     }

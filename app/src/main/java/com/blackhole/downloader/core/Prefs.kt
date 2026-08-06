@@ -47,10 +47,31 @@ object Prefs {
         get() = sp.getString(KEY_LAST_URL, null)
         set(value) = sp.edit().putString(KEY_LAST_URL, value).apply()
 
+    /** Last link the app successfully read from the clipboard, cached so the
+     *  overlay can fall back to it when background clipboard reads are blocked. */
+    var lastClipboardUrl: String?
+        get() = sp.getString(KEY_LAST_CLIPBOARD, null)
+        set(value) = sp.edit().putString(KEY_LAST_CLIPBOARD, value).apply()
+
     /** Floating overlay bubble for one-tap downloads from any app. */
     var overlayEnabled: Boolean
         get() = sp.getBoolean(KEY_OVERLAY, false)
         set(value) = sp.edit().putBoolean(KEY_OVERLAY, value).apply()
+
+    /** Ghost mode: bubble fades to a faint dot, shakes in on demand. */
+    var ghostMode: Boolean
+        get() = sp.getBoolean(KEY_GHOST_MODE, false)
+        set(value) = sp.edit().putBoolean(KEY_GHOST_MODE, value).apply()
+
+    /** Whisper mode: hold the bubble and say "download" instead of tapping. */
+    var whisperMode: Boolean
+        get() = sp.getBoolean(KEY_WHISPER_MODE, false)
+        set(value) = sp.edit().putBoolean(KEY_WHISPER_MODE, value).apply()
+
+    /** Vampire mode: auto-download any platform link that lands on the clipboard. */
+    var vampireMode: Boolean
+        get() = sp.getBoolean(KEY_VAMPIRE_MODE, false)
+        set(value) = sp.edit().putBoolean(KEY_VAMPIRE_MODE, value).apply()
 
     /** Track downloaded URLs so the overlay rejects duplicates. */
     fun addDownloadedUrl(url: String) {
@@ -77,6 +98,10 @@ object Prefs {
     private const val KEY_AUTO_START = "auto_start_on_open"
     private const val KEY_ARIA2C = "use_aria2c"
     private const val KEY_LAST_URL = "last_handled_url"
+    private const val KEY_LAST_CLIPBOARD = "last_clipboard_url"
     private const val KEY_OVERLAY = "floating_overlay"
+    private const val KEY_GHOST_MODE = "ghost_mode"
+    private const val KEY_WHISPER_MODE = "whisper_mode"
+    private const val KEY_VAMPIRE_MODE = "vampire_mode"
     private const val KEY_DOWNLOADED_URLS = "downloaded_urls"
 }
