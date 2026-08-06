@@ -1,6 +1,7 @@
 package com.blackhole.downloader.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
@@ -46,7 +47,8 @@ class ClipboardVampireService : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun readClipboardUrl(): String? {
-        val clip = runCatching { clipboard }.getOrNull() ?: return null
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+        val clip = runCatching { cm.primaryClip }.getOrNull() ?: return null
         for (i in 0 until clip.itemCount) {
             val text = runCatching { clip.getItemAt(i).coerceToText(this) }.getOrNull() ?: continue
             UrlUtils.extractUrl(text)?.let { return it }

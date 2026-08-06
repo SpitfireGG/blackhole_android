@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
                                     Prefs.whisperMode = enabled
                                     if (enabled &&
                                         ContextCompat.checkSelfPermission(
-                                            this, Manifest.permission.RECORD_AUDIO
+                                            this@MainActivity, Manifest.permission.RECORD_AUDIO
                                         ) != PackageManager.PERMISSION_GRANTED
                                     ) {
                                         micPermission.launch(Manifest.permission.RECORD_AUDIO)
@@ -144,7 +144,7 @@ class MainActivity : ComponentActivity() {
                                 vampireEnabled = Prefs.vampireMode,
                                 onVampireToggle = { enabled ->
                                     Prefs.vampireMode = enabled
-                                    if (enabled && !ClipboardVampireService.isEnabled(this)) {
+                                    if (enabled && !ClipboardVampireService.isEnabled(this@MainActivity)) {
                                         openAccessibilitySettings()
                                     }
                                 },
@@ -223,8 +223,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hasMicPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun openAccessibilitySettings() {
