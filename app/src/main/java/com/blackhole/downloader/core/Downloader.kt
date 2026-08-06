@@ -109,7 +109,6 @@ object Downloader {
         }
 
         val cap = Prefs.maxHeight
-        val heightFilter = if (cap > 0) "[height<=?$cap]" else ""
 
         when (platform) {
             Platform.TIKTOK -> {
@@ -121,25 +120,27 @@ object Downloader {
                 request.addOption("--merge-output-format", "mp4")
             }
 
-            Platform.PINTEREST, Platform.INSTAGRAM, Platform.TWITTER, Platform.FACEBOOK -> {
-                request.addOption("-f", "bv*$heightFilter+ba/b$heightFilter/b")
+            // Non-YouTube platforms always pull the best quality available.
+            Platform.PINTEREST, Platform.INSTAGRAM, Platform.TWITTER, Platform.FACEBOOK,
+            Platform.REDDIT, Platform.OTHER -> {
+                request.addOption("-f", "bv*+ba/b")
                 request.addOption("--merge-output-format", "mp4")
             }
 
             Platform.YOUTUBE -> {
-                // Prefer an mp4/m4a pair so the merge is a remux rather than a re-encode.
-                request.addOption(
-                    "-f",
-                    "bv*$heightFilter[ext=mp4]+ba[ext=m4a]/bv*$heightFilter+ba/b$heightFilter/b"
-                )
+                // Honour the quality cap first, then fall back to whatever is best.
+                // Prioritising height over container means a selected resolution is
+                // never silently downgraded just because it isn't available as mp4.
+                val format = if (cap > 0) {
+                    "bv*[height<=?$cap]+ba/b[height<=?$cap]/b"
+                } else {
+                    "bv*+ba/b"
+                }
+                request.addOption("-f", format)
                 request.addOption("--merge-output-format", "mp4")
-                // The web client gets throttled hardest; these two are usually quicker.
-                request.addOption("--extractor-args", "youtube:player_client=android,web_safari")
-            }
-
-            Platform.REDDIT, Platform.OTHER -> {
-                request.addOption("-f", "bv*$heightFilter+ba/b$heightFilter/b")
-                request.addOption("--merge-output-format", "mp4")
+                // The android client is throttled to ~720p by YouTube; the tv and web
+                // clients expose the full resolution ladder (1440p/4K etc).
+                request.addOption("--extractor-args", "youtube:player_client=default,tv,web_safari")
             }
         }
 
