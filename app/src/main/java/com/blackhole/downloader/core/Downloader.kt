@@ -102,6 +102,8 @@ object Downloader {
         request.addOption("--fragment-retries", "6")
         request.addOption("--socket-timeout", "20")
         request.addOption("--concurrent-fragments", "4")
+        // Attach the platform's cover art so players that read embedded art show it.
+        request.addOption("--embed-thumbnail")
 
         if (Prefs.useAria2c) {
             request.addOption("--downloader", "libaria2c.so")
@@ -131,10 +133,15 @@ object Downloader {
                 // Honour the quality cap first, then fall back to whatever is best.
                 // Prioritising height over container means a selected resolution is
                 // never silently downgraded just because it isn't available as mp4.
+                // AV1 is excluded: many phones (e.g. Snapdragon 695) have no AV1
+                // hardware decoder, so Android's thumbnailer and editors can't draw
+                // a frame from AV1 files. VP9/H.264 stay fully decodable and VP9
+                // still reaches 1440p/4K. Audio prefers AAC over Opus for the same
+                // reason (Opus-in-MP4 is a rough edge for some editors).
                 val format = if (cap > 0) {
-                    "bv*[height<=?$cap]+ba/b[height<=?$cap]/b"
+                    "bv*[height<=?$cap][vcodec!*=av01]+ba[ext=m4a]/bv*[height<=?$cap][vcodec!*=av01]+ba/b[height<=?$cap]/b"
                 } else {
-                    "bv*+ba/b"
+                    "bv*[vcodec!*=av01]+ba[ext=m4a]/bv*[vcodec!*=av01]+ba/b"
                 }
                 request.addOption("-f", format)
                 request.addOption("--merge-output-format", "mp4")
