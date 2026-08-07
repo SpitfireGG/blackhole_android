@@ -135,19 +135,21 @@ object Downloader {
                 // never silently downgraded just because it isn't available as mp4.
                 // AV1 is excluded: many phones (e.g. Snapdragon 695) have no AV1
                 // hardware decoder, so Android's thumbnailer and editors can't draw
-                // a frame from AV1 files. VP9/H.264 stay fully decodable and VP9
-                // still reaches 1440p/4K. Audio prefers AAC over Opus for the same
-                // reason (Opus-in-MP4 is a rough edge for some editors).
+                // a frame from AV1 files. H.264 is preferred when it reaches at
+                // least 720p (max editor compatibility); otherwise VP9 (also fully
+                // decodable) is used and still reaches 1080p/1440p/4K. Audio prefers
+                // AAC over Opus for the same reason (Opus-in-MP4 is a rough edge).
                 val format = if (cap > 0) {
-                    "bv*[height<=?$cap][vcodec!*=av01]+ba[ext=m4a]/bv*[height<=?$cap][vcodec!*=av01]+ba/b[height<=?$cap]/b"
+                    "bv*[height>=720][height<=?$cap][vcodec*=avc1]+ba[ext=m4a]/bv*[height<=?$cap][vcodec!*=av01]+ba/b[height<=?$cap]/b"
                 } else {
                     "bv*[vcodec!*=av01]+ba[ext=m4a]/bv*[vcodec!*=av01]+ba/b"
                 }
                 request.addOption("-f", format)
                 request.addOption("--merge-output-format", "mp4")
-                // The android client is throttled to ~720p by YouTube; the tv and web
-                // clients expose the full resolution ladder (1440p/4K etc).
-                request.addOption("--extractor-args", "youtube:player_client=default,tv,web_safari")
+                // The default web client is bot-checked and can collapse to a 360p
+                // ladder; android_vr exposes the full resolution ladder (1080p H.264,
+                // 4K VP9) without those checks.
+                request.addOption("--extractor-args", "youtube:player_client=android_vr,tv")
             }
         }
 
