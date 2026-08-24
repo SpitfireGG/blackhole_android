@@ -50,12 +50,12 @@ TikTok serves two versions of every video: `play_addr`, which is clean, and
 under a format id containing `download`, so the format selector excludes it:
 
 ```
--f "bv*+ba/b[format_id!*=download]/b"
+-f "bv*[format_id!*=download]+ba[format_id!*=download]/b[format_id!*=download]"
 ```
 
 Nothing is being scrubbed off the pixels — the app is just asking for the file that
-never had the stamp. If TikTok renames its format ids, the trailing `/b` falls back to
-whatever is best, and you'll get a watermark until yt-dlp is updated.
+never had the stamp. Every fallback rejects the stamped format, so the download fails
+instead of silently saving a watermarked copy when no clean stream is available.
 
 ### Three input routes
 

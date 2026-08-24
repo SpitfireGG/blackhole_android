@@ -116,9 +116,13 @@ object Downloader {
             Platform.TIKTOK -> {
                 // TikTok serves two things: `play_addr` (clean) and `download_addr`
                 // (stamped with the username watermark). yt-dlp exposes the stamped one
-                // under a format id containing "download", so excluding it leaves the
-                // clean stream. The trailing /b is a safety net if the ids ever change.
-                request.addOption("-f", "bv*+ba/b[format_id!*=download]/b")
+                // under a format id containing "download". Apply the exclusion to
+                // every branch: an unrestricted fallback could otherwise silently
+                // select the stamped copy when the clean stream is unavailable.
+                request.addOption(
+                    "-f",
+                    "bv*[format_id!*=download]+ba[format_id!*=download]/b[format_id!*=download]"
+                )
                 request.addOption("--merge-output-format", "mp4")
             }
 
@@ -130,19 +134,16 @@ object Downloader {
             }
 
             Platform.YOUTUBE -> {
-                // Honour the quality cap first, then fall back to whatever is best.
-                // Prioritising height over container means a selected resolution is
-                // never silently downgraded just because it isn't available as mp4.
-                // AV1 is excluded: many phones (e.g. Snapdragon 695) have no AV1
-                // hardware decoder, so Android's thumbnailer and editors can't draw
-                // a frame from AV1 files. H.264 is preferred when it reaches at
-                // least 720p (max editor compatibility); otherwise VP9 (also fully
-                // decodable) is used and still reaches 1080p/1440p/4K. Audio prefers
-                // AAC over Opus for the same reason (Opus-in-MP4 is a rough edge).
+                // Keep YouTube downloads suitable for Android galleries and editors.
+                // Merely merging into MP4 does not convert VP9/AV1 to H.264, and many
+                // Android editor thumbnailers cannot decode those codecs. Require an
+                // MP4 H.264 stream and AAC audio; if separate streams are unavailable,
+                // fall back to a progressive MP4 that already contains both. yt-dlp
+                // will choose the best H.264 resolution within the requested cap.
                 val format = if (cap > 0) {
-                    "bv*[height>=720][height<=?$cap][vcodec*=avc1]+ba[ext=m4a]/bv*[height<=?$cap][vcodec!*=av01]+ba/b[height<=?$cap]/b"
+                    "bv*[ext=mp4][vcodec^=avc1][height<=?$cap]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1][height<=?$cap]"
                 } else {
-                    "bv*[vcodec!*=av01]+ba[ext=m4a]/bv*[vcodec!*=av01]+ba/b"
+                    "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1]"
                 }
                 request.addOption("-f", format)
                 request.addOption("--merge-output-format", "mp4")

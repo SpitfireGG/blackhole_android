@@ -12,8 +12,8 @@ android {
         applicationId = "com.blackhole.downloader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         // youtubedl-android ships native python/ffmpeg binaries for these ABIs only.
         ndk {
