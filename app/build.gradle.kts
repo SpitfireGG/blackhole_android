@@ -8,6 +8,14 @@ android {
     namespace = "com.blackhole.downloader"
     compileSdk = 35
 
+    // Deterministic release signing. CI runners are ephemeral: each run used to
+    // auto-generate a throwaway debug keystore, so every "latest" APK conflicted
+    // with the previously installed one (signature mismatch). A repo-local
+    // keystore makes all builds — local and CI — mutually upgradable.
+    // One-time setup: bash make-keystore.sh  (then commit keystore/blackhole.jks)
+    val keystoreFile = rootProject.file("keystore/blackhole.jks")
+    val hasReleaseKey = keystoreFile.exists()
+
     defaultConfig {
         applicationId = "com.blackhole.downloader"
         minSdk = 24
@@ -42,6 +50,19 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("blackhole") {
+                storeFile = keystoreFile
+                // The key exists to keep updates installable over each other,
+                // not as a secret; defaults match make-keystore.sh.
+                storePassword = (findProperty("BLACKHOLE_STORE_PASSWORD") as String?) ?: "blackhole"
+                keyAlias = (findProperty("BLACKHOLE_KEY_ALIAS") as String?) ?: "blackhole"
+                keyPassword = (findProperty("BLACKHOLE_KEY_PASSWORD") as String?) ?: "blackhole"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -53,10 +74,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Sideload-friendly: signs release builds with the debug key so
-            // `./gradlew assembleRelease` produces an installable APK out of the box.
-            // Swap in a real keystore before you distribute anything.
-            signingConfig = signingConfigs.getByName("debug")
+            // Deterministic key when present; otherwise fall back so a missing
+            // keystore never breaks the build (CI generates one via release.sh).
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("blackhole")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
