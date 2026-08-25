@@ -5,6 +5,9 @@ import android.util.Log
 import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Owns the one-time initialisation of the bundled python + yt-dlp + ffmpeg binaries.
@@ -13,6 +16,14 @@ import com.yausername.youtubedl_android.YoutubeDL
 object YtdlEngine {
 
     private const val TAG = "YtdlEngine"
+
+    /**
+     * Serialises engine swaps against engine use. Updating yt-dlp replaces the
+     * binaries under a running extractor's feet, so [update] and every yt-dlp
+     * execution take this lock: an update waits for in-flight downloads and a
+     * download waits for an in-flight update.
+     */
+    val gate = Mutex()
 
     @Volatile
     private var initialised = false
@@ -43,9 +54,15 @@ object YtdlEngine {
             } else {
                 YoutubeDL.UpdateChannel.STABLE
             }
-            YoutubeDL.getInstance()
-                .updateYoutubeDL(context.applicationContext, channel)
-                ?.name ?: "unknown"
+            // Holds [gate] so binaries are never swapped under a running
+            // extractor, and so a download starting mid-update waits.
+            runBlocking {
+                gate.withLock {
+                    YoutubeDL.getInstance()
+                        .updateYoutubeDL(context.applicationContext, channel)
+                        ?.name ?: "unknown"
+                }
+            }
         }.getOrElse { e ->
             Log.w(TAG, "yt-dlp update failed", e)
             "update failed"

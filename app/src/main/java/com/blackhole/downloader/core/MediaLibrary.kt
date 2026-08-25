@@ -110,7 +110,9 @@ object MediaLibrary {
         )
 
         val (selection, args) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?" to arrayOf("%$ALBUM%")
+            // Anchored to the exact album path; a bare "%Blackhole%" would also
+            // match unrelated folders like Movies/MyBlackholeClips.
+            "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?" to arrayOf("$RELATIVE_PATH%")
         } else {
             "${MediaStore.MediaColumns.DATA} LIKE ?" to arrayOf("%/$ALBUM/%")
         }

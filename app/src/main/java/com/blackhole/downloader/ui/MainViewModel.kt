@@ -120,7 +120,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         Prefs.lastHandledUrl = url
         _clipboardHint.value = url to UrlUtils.platformOf(url)
-        DownloadService.enqueue(getApplication(), url)
+        val queued = DownloadService.enqueue(getApplication(), url)
+        if (!queued) {
+            _toasts.tryEmit("Android blocked the background download. Open Blackhole and tap again")
+        }
     }
 
     fun cancel() {

@@ -202,9 +202,12 @@ class FloatingOverlayService : Service() {
             return
         }
         Prefs.lastHandledUrl = url
-        DownloadService.enqueue(this, url)
+        if (DownloadService.enqueue(this, url)) {
+            showFlash("Download queued")
+        } else {
+            showFlash("Open Blackhole to download")
+        }
         pulseAnimation()
-        showFlash("Download queued")
     }
 
     private fun openClipboardBridge() {
@@ -293,9 +296,8 @@ class FloatingOverlayService : Service() {
     // ---------------------------------------------------------------- ghost
 
     private fun applyGhostAlpha() {
-        if (::overlayView.isInitialized && overlayView.isAttachedToWindow) {
-            overlayView.animate().cancel()
-        }
+        if (!::overlayView.isInitialized) return
+        overlayView.animate().cancel()
         overlayView.alpha = if (Prefs.ghostMode) GHOST_ALPHA else 1f
     }
 

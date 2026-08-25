@@ -10,10 +10,14 @@ import android.util.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /** Tiny in-memory thumbnail cache so the videos list doesn't re-decode on every scroll. */
 object Thumbs {
+
+    /** Above this, copying the file just to grab a poster frame isn't worth it. */
+    private const val FFMPEG_FALLBACK_MAX_BYTES = 256L * 1024 * 1024
 
     private val cache = object : LruCache<String, Bitmap>(12 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
@@ -69,6 +73,11 @@ object Thumbs {
         // are extracted; it already ran at app startup via BlackholeApp.
         YtdlEngine.ensureInit(context).getOrNull() ?: return null
 
+        // This path copies the whole file to cache first; on big videos that is
+        // more I/O than a list thumbnail justifies (MediaStore already handled
+        // everything decodable above anyway).
+        if (video.sizeBytes > FFMPEG_FALLBACK_MAX_BYTES) return null
+
         val binary = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so")
         if (!binary.isFile || !binary.canExecute()) return null
 
@@ -80,9 +89,12 @@ object Thumbs {
             }
             .joinToString(":") { it.absolutePath }
 
+        // Unique per invocation: rows can render concurrently while scrolling,
+        // and two workers sharing "in_<id>.mp4" would corrupt each other.
+        val nonce = UUID.randomUUID().toString()
         val cacheDir = File(context.cacheDir, "frames").apply { mkdirs() }
-        val inputFile = File(cacheDir, "in_${video.id}.mp4")
-        val out = File(cacheDir, "thumb_${video.id}.jpg")
+        val inputFile = File(cacheDir, "in_$nonce.bin")
+        val out = File(cacheDir, "thumb_$nonce.jpg")
 
         return try {
             context.contentResolver.openInputStream(video.uri)?.use { input ->

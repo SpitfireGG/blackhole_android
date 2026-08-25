@@ -48,8 +48,11 @@ class ClipboardBridgeActivity : Activity() {
             }
             else -> {
                 Prefs.lastHandledUrl = url
-                DownloadService.enqueue(this, url)
-                toast("Download queued")
+                if (DownloadService.enqueue(this, url)) {
+                    toast("Download queued")
+                } else {
+                    toast("Couldn't start the download — open Blackhole and try again")
+                }
             }
         }
         finish()

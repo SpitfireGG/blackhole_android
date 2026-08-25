@@ -7,7 +7,9 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -19,12 +21,19 @@ object Downloader {
 
     private const val TAG = "Downloader"
 
+    /** Breathing room before the automatic second attempt. */
+    private const val RETRY_DELAY_MS = 1_500L
+
     /** Characters used for the short random filenames. Ambiguous glyphs left out. */
     private const val ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789"
 
     /**
      * Runs one download start to finish: yt-dlp into a scratch folder, then publish
      * the finished file into Movies/Blackhole.
+     *
+     * A single failed attempt is not the end: extractors rot weekly and streams
+     * hiccup, so one automatic retry runs after refreshing yt-dlp. Permanent
+     * failures (private, deleted, age-locked) skip the retry.
      *
      * @param onProgress called with (0..100, latest yt-dlp output line)
      */
@@ -36,22 +45,50 @@ object Downloader {
     ): Result<DownloadResult> = withContext(Dispatchers.IO) {
         YtdlEngine.ensureInit(context).getOrElse { return@withContext Result.failure(it) }
 
+        val first = runAttempt(context, url, processId, onProgress)
+        if (first.isSuccess || !isRetryable(first)) return@withContext first
+
+        coroutineContext.ensureActive()
+        onProgress(0f, "First try failed — refreshing the engine and retrying")
+        delay(RETRY_DELAY_MS)
+        // Refreshing costs a second or two and doubles as a cooldown for
+        // rate-limit / bot-check style rejections. Skipped when the user opted out.
+        if (Prefs.autoUpdate) YtdlEngine.update(context)
+        coroutineContext.ensureActive()
+        runAttempt(context, url, processId, onProgress)
+    }
+
+    fun cancel(processId: String) {
+        runCatching { YoutubeDL.getInstance().destroyProcessById(processId) }
+    }
+
+    // ---------------------------------------------------------------- attempt
+
+    private suspend fun runAttempt(
+        context: Context,
+        url: String,
+        processId: String,
+        onProgress: (Float, String) -> Unit
+    ): Result<DownloadResult> {
         val scratch = File(MediaLibrary.scratchDir(context), UUID.randomUUID().toString())
         if (!scratch.mkdirs()) {
-            return@withContext Result.failure(IllegalStateException("Can't create working folder"))
+            return Result.failure(IllegalStateException("Can't create working folder"))
         }
 
-        try {
-            val platform = UrlUtils.platformOf(url)
-            val request = buildRequest(url, platform, scratch)
+        return try {
+            val request = buildRequest(url, UrlUtils.platformOf(url), scratch)
 
             coroutineContext.ensureActive()
-            YoutubeDL.getInstance().execute(request, processId) { progress, _, line ->
-                onProgress(progress.coerceIn(0f, 100f), line)
+            // Holds the engine gate so a concurrent yt-dlp update can't swap
+            // binaries out from under this extraction.
+            YtdlEngine.gate.withLock {
+                YoutubeDL.getInstance().execute(request, processId) { progress, _, line ->
+                    onProgress(progress.coerceIn(0f, 100f), line)
+                }
             }
 
             val produced = pickOutputFile(scratch)
-                ?: return@withContext Result.failure(
+                ?: return Result.failure(
                     IllegalStateException("yt-dlp finished but produced no file")
                 )
 
@@ -63,7 +100,7 @@ object Downloader {
 
             val size = produced.length()
             val uri = MediaLibrary.publish(context, produced, finalName)
-                ?: return@withContext Result.failure(
+                ?: return Result.failure(
                     IllegalStateException("Couldn't save into Movies/Blackhole")
                 )
 
@@ -76,8 +113,14 @@ object Downloader {
         }
     }
 
-    fun cancel(processId: String) {
-        runCatching { YoutubeDL.getInstance().destroyProcessById(processId) }
+    /** Errors that a refresh-and-retry can't possibly fix aren't worth the wait. */
+    private fun isRetryable(result: Result<DownloadResult>): Boolean {
+        val message = result.exceptionOrNull()?.message.orEmpty()
+        val permanent = listOf(
+            "private video", "video unavailable", "unsupported url",
+            "requested format is not available", "contains age"
+        )
+        return permanent.none { message.contains(it, ignoreCase = true) }
     }
 
     // ---------------------------------------------------------------- request
@@ -119,9 +162,13 @@ object Downloader {
                 // under a format id containing "download". Apply the exclusion to
                 // every branch: an unrestricted fallback could otherwise silently
                 // select the stamped copy when the clean stream is unavailable.
+                // The bare `/b` at the very end is deliberate: when the clean stream
+                // is missing entirely, a watermarked video beats a failed download.
                 request.addOption(
                     "-f",
-                    "bv*[format_id!*=download]+ba[format_id!*=download]/b[format_id!*=download]"
+                    "bv*[format_id!*=download]+ba[format_id!*=download]" +
+                        "/b[format_id!*=download]" +
+                        "/b"
                 )
                 request.addOption("--merge-output-format", "mp4")
             }
@@ -134,23 +181,33 @@ object Downloader {
             }
 
             Platform.YOUTUBE -> {
-                // Keep YouTube downloads suitable for Android galleries and editors.
-                // Merely merging into MP4 does not convert VP9/AV1 to H.264, and many
-                // Android editor thumbnailers cannot decode those codecs. Require an
-                // MP4 H.264 stream and AAC audio; if separate streams are unavailable,
-                // fall back to a progressive MP4 that already contains both. yt-dlp
-                // will choose the best H.264 resolution within the requested cap.
+                // Resolution beats codec: pick the highest rung at or under the cap,
+                // preferring H.264+AAC in MP4 for Android gallery/editor compatibility
+                // only when it actually exists at that resolution. YouTube's H.264
+                // ladder frequently stops below the top resolution while VP9 covers
+                // it, so an avc1-only selector silently degrades 1080p requests to
+                // ~720p. Each `/` branch is only consulted when the previous one
+                // matches nothing; the final branches trade codec purity (and, last
+                // of all, the cap itself) for delivering *something* watchable
+                // instead of failing outright.
                 val format = if (cap > 0) {
-                    "bv*[ext=mp4][vcodec^=avc1][height<=?$cap]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1][height<=?$cap]"
+                    "bv*[ext=mp4][vcodec^=avc1][height<=?$cap]+ba[ext=m4a]" +
+                        "/bv*[vcodec^=avc1][height<=?$cap]+ba" +
+                        "/bv*[height<=?$cap]+ba" +
+                        "/b[height<=?$cap]" +
+                        "/bv*+ba/b"
                 } else {
-                    "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4][vcodec^=avc1]"
+                    "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]" +
+                        "/bv*[vcodec^=avc1]+ba" +
+                        "/bv*+ba/b"
                 }
                 request.addOption("-f", format)
                 request.addOption("--merge-output-format", "mp4")
-                // The default web client is bot-checked and can collapse to a 360p
-                // ladder; android_vr exposes the full resolution ladder (1080p H.264,
-                // 4K VP9) without those checks.
-                request.addOption("--extractor-args", "youtube:player_client=android_vr,tv")
+                // Player clients are left at yt-dlp's defaults: they are retuned
+                // with every release (this app tracks nightly), whereas hardcoded
+                // clients rot fast. The previously pinned android_vr,tv combo was
+                // serving logged-out sessions DRM'd/SABR-limited ladders that
+                // capped well below 1080p.
             }
         }
 

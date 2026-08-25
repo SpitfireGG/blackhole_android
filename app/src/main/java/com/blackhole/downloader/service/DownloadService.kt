@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.blackhole.downloader.BlackholeApp
@@ -43,6 +44,10 @@ class DownloadService : Service() {
     private var worker: Job? = null
     private var currentProcessId: String? = null
 
+    /** Set when the user cancels so the killed process isn't reported as a failure. */
+    @Volatile
+    private var cancelRequested = false
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -53,6 +58,7 @@ class DownloadService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CANCEL -> {
+                cancelRequested = true
                 currentProcessId?.let { Downloader.cancel(it) }
                 drain()
                 stopSelfSafely()
@@ -83,6 +89,7 @@ class DownloadService : Service() {
 
     private suspend fun consume() {
         for (url in queue) {
+            cancelRequested = false
             val platform = UrlUtils.platformOf(url)
             val processId = UUID.randomUUID().toString()
             currentProcessId = processId
@@ -121,9 +128,11 @@ class DownloadService : Service() {
                     notifyDone(it.displayName, UrlUtils.formatBytes(it.sizeBytes))
                 },
                 onFailure = {
-                    val reason = friendlyError(it)
-                    DownloadBus.emit(DownloadEvent.Failed(reason))
-                    notifyFailed(reason)
+                    if (!cancelRequested) {
+                        val reason = friendlyError(it)
+                        DownloadBus.emit(DownloadEvent.Failed(reason))
+                        notifyFailed(reason)
+                    }
                 }
             )
 
@@ -229,11 +238,18 @@ class DownloadService : Service() {
         const val ACTION_CANCEL = "com.blackhole.downloader.CANCEL"
         const val EXTRA_URL = "url"
 
+        private const val TAG = "DownloadService"
         private const val NOTIFICATION_ID = 4201
         private val doneCounter = AtomicInteger(5000)
         private fun nextDoneId() = doneCounter.incrementAndGet()
 
-        fun enqueue(context: Context, url: String) {
+        /**
+         * Queues a download. Returns false instead of throwing when the system
+         * refuses to launch the foreground service (Android 12+ blocks FGS
+         * starts from the background — e.g. vampire mode firing while another
+         * app is in front). Callers degrade to a quiet message, never a crash.
+         */
+        fun enqueue(context: Context, url: String): Boolean = try {
             val intent = Intent(context, DownloadService::class.java)
                 .setAction(ACTION_DOWNLOAD)
                 .putExtra(EXTRA_URL, url)
@@ -242,6 +258,10 @@ class DownloadService : Service() {
             } else {
                 context.startService(intent)
             }
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "foreground service start rejected", t)
+            false
         }
 
         fun cancel(context: Context) {
@@ -275,10 +295,22 @@ class DownloadService : Service() {
                     message.contains("Unable to extract", true) -> "No video found at that link"
 
                 message.contains("Video unavailable", true) ||
-                    message.contains("removed", true) -> "The video is unavailable or deleted"
+                    message.contains("removed by the uploader", true) -> "The video is unavailable or deleted"
+
+                message.contains("Requested format is not available", true) ->
+                    "No compatible stream there. Photo posts can't be saved yet"
+
+                message.contains("not a bot", true) ||
+                    message.contains("sign in to confirm", true) ->
+                    "The site flagged this as automated. Try again in a minute"
+
+                message.contains("403", true) || message.contains("forbidden", true) ->
+                    "The stream refused us. Try again"
 
                 message.contains("timed out", true) ||
                     message.contains("Temporary failure", true) ||
+                    message.contains("unable to download", true) ||
+                    message.contains("giving up", true) ||
                     message.contains("Network", true) -> "Network dropped out. Try again"
 
                 message.contains("age", true) &&
@@ -286,6 +318,8 @@ class DownloadService : Service() {
 
                 message.contains("Movies/Blackhole", true) -> message
 
+                // Reached only after the automatic retry has already refreshed
+                // yt-dlp and failed again — genuinely stale engine or a new breakage.
                 else -> "Couldn't download that one. Try updating yt-dlp in settings"
             }
         }
