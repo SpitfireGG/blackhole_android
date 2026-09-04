@@ -41,7 +41,7 @@ class ClipboardBridgeActivity : Activity() {
     private fun readClipboardAndFinish() {
         val url = readClipboardUrl()
         when {
-            url == null -> toast("No link on clipboard")
+            url == null -> toast("empty clipboard detected, please copy something and try again")
             Prefs.isAlreadyDownloaded(url) -> {
                 Prefs.lastHandledUrl = url
                 toast("Already saved")
